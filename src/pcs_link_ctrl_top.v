@@ -157,7 +157,6 @@ module pcs_link_ctrl_top #(
         .rd_en(rx_rd_en),
         .data_out(rx_decoded_byte),
         .valid_out(rx_valid),
-        .k_out(),
         .decode_err()
     );
 

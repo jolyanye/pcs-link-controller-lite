@@ -5,7 +5,6 @@ module decoder_8b10b (
     input wire rd_en,
     output reg [7:0] data_out,
     output reg valid_out,
-    output reg k_out,
     output reg decode_err
 );
 
@@ -78,6 +77,12 @@ module decoder_8b10b (
             4'b0001, 4'b1110: decoded_3b = 3'd7;
             default: begin decoded_3b = 3'd0; decode_err_4b = 1'b1; end
         endcase
+
+        // K28.5 (Comma) Special Case
+        if ((data_6b == 6'b001111 || data_6b == 6'b110000) && (data_4b == 4'b0101 || data_4b == 4'b1010)) begin
+            decoded_3b = 3'd5;
+            decode_err_4b = 1'b0; 
+        end
     end
 
     // **********************
@@ -87,16 +92,13 @@ module decoder_8b10b (
         if (!rst_n) begin
             data_out <= 8'b0;
             valid_out <= 1'b0;
-            k_out <= 1'b0;
             decode_err <= 1'b0;
         end else begin
             if (rd_en && !(decode_err_6b || decode_err_4b)) begin
                 data_out <= {decoded_3b, decoded_5b};
-                k_out <= ((data_6b == 6'b001111 || data_6b == 6'b110000) && (data_4b == 4'b0101 || data_4b == 4'b1010)); // K28.5 detection
                 decode_err <= decode_err_6b || decode_err_4b;
                 valid_out <= 1'b1;
             end else begin
-                k_out <= 1'b0;
                 decode_err <= 1'b0;
                 valid_out <= 1'b0;
             end
