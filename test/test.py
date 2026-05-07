@@ -186,7 +186,7 @@ async def test_pcs_verification_suite(dut):
         scoreboard.add_expected(expected_10b, tx_val)
         
         # 1. Check Backpressure via Whitebox Hierarchical Access
-        while int(dut.user_project.tx_cdc_fifo.full.value) == 1:
+        while int(dut.user_project.pcs_core.tx_cdc_fifo.full.value) == 1:
             await RisingEdge(dut.clk_sys)
             
         # 2. Drive the Data
