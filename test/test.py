@@ -4,7 +4,7 @@ from cocotb.triggers import RisingEdge, ClockCycles, with_timeout, SimTimeoutErr
 from cocotb.queue import Queue
 import random
 
-# --- 1. PREDICTOR (Golden Model) ---
+# --- 1. PREDICTOR ---
 class GoldenEncoder8b10b:
     def __init__(self):
         self.rd = 0  # 0 = Negative (RD-), 1 = Positive (RD+)
@@ -55,7 +55,7 @@ class GoldenEncoder8b10b:
         
         return bits_6b + bits_4b
 
-# --- 2. UVM-STYLE AGENTS ---
+# --- 2. AGENTS ---
 class PcsScoreboard:
     def __init__(self, dut):
         self.dut = dut
@@ -133,23 +133,19 @@ class PcsRxDriver:
 # --- 3. MAIN TESTBENCH ---
 @cocotb.test()
 async def test_pcs_verification_suite(dut):
-    dut._log.info("Starting UVM-Style PCS Verification")
+    dut._log.info("Starting PCS LITE Verification Test (starting with TX mode)...")
 
-    # Start Clocks
     cocotb.start_soon(Clock(dut.clk, 15.15, unit="ns").start())     
     cocotb.start_soon(Clock(dut.clk_sys, 100, unit="ns").start())   
 
-    # Instantiate Agents
     predictor = GoldenEncoder8b10b()
     scoreboard = PcsScoreboard(dut)
     monitor = PcsTxMonitor(dut, scoreboard)
     driver = PcsRxDriver(dut)
 
-    # Launch background coroutines
     cocotb.start_soon(monitor.start())
     cocotb.start_soon(driver.start())
 
-    # --- INITIALIZATION ---
     dut.ena.value = 1
     dut.rst_n.value = 0
     dut.rx_req.value = 0     
@@ -158,9 +154,9 @@ async def test_pcs_verification_suite(dut):
     dut.rst_n.value = 1
 
     # =====================================================
-    # PHASE 1: COVERAGE - 8b/10b BOUNDARY DISPARITY STRESS
+    # PHASE 1: 8b/10b DISPARITY STRESS TEST
     # =====================================================
-    dut._log.info("--- Phase 1: Disparity Flip Stress ---")
+    dut._log.info("--- Phase 1: Disparity Flip Stress ---") # spam data with flipping disparity patterns to stress test
     disparity_stress_bytes = [0x00, 0xFF, 0x0F, 0xF0, 0x55, 0xAA] * 5 
     
     for tx_val in disparity_stress_bytes:
@@ -176,35 +172,31 @@ async def test_pcs_verification_suite(dut):
     # =====================================================
     # PHASE 2: COVERAGE - CDC FIFO BURST STRESS
     # =====================================================
-    dut._log.info("--- Phase 2: CDC FIFO Burst Test ---")
+    dut._log.info("--- Phase 2: TX CDC FIFO Burst Test ---") # drive a burst of data to fill the TX FIFO and ensure proper backpressure handling without deadlocks
     
     for i in range(20): 
         tx_val = random.randint(0, 255)
         expected_10b = predictor.encode(tx_val)
-        
-        # FIX: Removed the extra parenthesis here!
         scoreboard.add_expected(expected_10b, tx_val)
         
-        # 1. Check Backpressure via Whitebox Hierarchical Access
+        # Check FIFO status before driving new data
         while int(dut.user_project.pcs_core.tx_cdc_fifo.full.value) == 1:
+            dut._log.warning(f"TX FIFO Full! Waiting... (Attempt {i+1})")
             await RisingEdge(dut.clk_sys)
             
-        # 2. Drive the Data
         dut.uio_in.value = tx_val
         dut.tx_valid.value = 1
         await RisingEdge(dut.clk_sys) 
         dut.tx_valid.value = 0
-
-        # 3. The "Golden" Pipeline Flush
         await ClockCycles(dut.clk_sys, 2) 
     
-    # Wait for the SerDes pipeline to completely drain the FIFO
+    # Wait for the SerDes to completely drain the FIFO
     await ClockCycles(dut.clk_sys, 100)
 
     # =====================================================
-    # PHASE 3: STATE HANDSHAKE (LTSSM TOGGLE)
+    # PHASE 3: SWITCH LTSSM DIRECTION
     # =====================================================
-    dut._log.info("--- Phase 3: LTSSM Direction Switch ---")
+    dut._log.info("--- Phase 3: LTSSM Direction Switch (TX -> RX) ---")
     dut.rx_req.value = 1     
     
     try:
@@ -215,13 +207,13 @@ async def test_pcs_verification_suite(dut):
 
     await ClockCycles(dut.clk, 20) 
     
-    # Verify link maintains lock during and after the switch
+    # Check that link maintains lock during and after the switch
     assert int(dut.link_lock_out.value) == 1, "FAIL: Dropped Link Lock during turnaround!"
 
     # =====================================================
-    # PHASE 4: RX MODE (DECODER STRESS)
+    # PHASE 4: RX MODE
     # =====================================================
-    dut._log.info("--- Phase 4: RX Mode (Checking Decoder) ---")
+    dut._log.info("--- Phase 4: RX Mode ---")
     num_rx_tests = 50 
     
     for i in range(num_rx_tests):
@@ -232,7 +224,6 @@ async def test_pcs_verification_suite(dut):
         driver.queue_symbol(symbol)
         
         try:
-            # Wait for your hardware to decode and pull rx_valid high
             await with_timeout(RisingEdge(dut.rx_valid), 15000, "ns") 
             received_val = dut.uio_out.value.to_unsigned()
             
@@ -240,6 +231,5 @@ async def test_pcs_verification_suite(dut):
         except SimTimeoutError:
             assert False, f"DEADLOCK: Hardware never asserted rx_valid for 0x{tx_val:02X}."
             
-    # Evaluate TX Scoreboard
     assert scoreboard.errors == 0, f"Test Failed with {scoreboard.errors} TX discrepancies."
     dut._log.info(f"--- VERIFICATION COMPLETE: 0 ERRORS DETECTED! ---")
