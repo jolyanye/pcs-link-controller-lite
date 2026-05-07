@@ -92,7 +92,7 @@ module decoder_8b10b (
         end else begin
             if (rd_en && !(decode_err_6b || decode_err_4b)) begin
                 data_out <= {decoded_3b, decoded_5b};
-                k_out <= (decoded_5b == 5'd28 && (data_4b == 4'b0101 || data_4b == 4'b1010)); // K28.5 detection
+                k_out <= ((data_6b == 6'b001111 || data_6b == 6'b110000) && (data_4b == 4'b0101 || data_4b == 4'b1010)); // K28.5 detection
                 decode_err <= decode_err_6b || decode_err_4b;
                 valid_out <= 1'b1;
             end else begin
