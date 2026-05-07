@@ -19,7 +19,6 @@ module ltssm_arbiter (
     localparam STATE_TX = 2'b00;
     localparam STATE_RX = 2'b01;
     localparam STATE_DRAIN = 2'b10; // Used when switching from RX -> TX - finish draining RX FIFO before allowing TX to take over
-    // Difficult for TX -> RX because tx_fifo_empty in link clk domain
     localparam STATE_FLUSH = 2'b11; // TX -> Flush -> RX or RX -> Drain -> Flush -> TX, reset all components
 
     reg [1:0] state, next_state;

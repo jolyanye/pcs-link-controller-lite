@@ -87,6 +87,12 @@ module encoder_8b10b (
             end
             default: begin data_4b = 4'b0000; unbalanced_4b = 1'b0; end
         endcase
+
+        // K28.5 (Comma) override
+        if (k_select && data_5b == 5'd28 && data_3b == 3'd5) begin
+            data_4b = (rd == 0) ? 4'b1010 : 4'b0101;
+            unbalanced_4b = 1'b0;
+        end
     end
 
     // **********************
