@@ -175,7 +175,7 @@ async def test_pcs_verification_suite(dut):
         await ClockCycles(dut.clk_sys, 5)
 
     # =====================================================
-    # PHASE 2: COVERAGE - FIFO BURST (FULL/EMPTY STRESS)
+    # PHASE 2: COVERAGE - CDC FIFO BURST STRESS
     # =====================================================
     dut._log.info("--- Phase 2: CDC FIFO Burst Test with Backpressure ---")
     
@@ -184,8 +184,7 @@ async def test_pcs_verification_suite(dut):
         expected_10b = predictor.encode(tx_val)
         scoreboard.add_expected(expected_10b, tx_val)
         
-        # 1. Check Backpressure: Wait if the FIFO is occupied/full
-        # uo_out[3] is the occupied flag based on tb.v
+        # 1. Check Backpressure
         while (int(dut.uo_out.value) & (1 << 3)) != 0:
             await RisingEdge(dut.clk_sys)
             
@@ -194,6 +193,11 @@ async def test_pcs_verification_suite(dut):
         dut.tx_valid.value = 1
         await RisingEdge(dut.clk_sys) 
         dut.tx_valid.value = 0
+
+        # THE FIX: Pipeline Clear Time
+        # Give the encoder 1 clock cycle to push its registered data
+        # into the CDC FIFO before we loop back and check 'occupied' again!
+        await RisingEdge(dut.clk_sys) 
     
     # Wait for the SerDes pipeline to completely drain the FIFO
     await ClockCycles(dut.clk_sys, 100)
