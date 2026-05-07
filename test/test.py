@@ -181,8 +181,8 @@ async def test_pcs_verification_suite(dut):
     
     for i in range(20): 
         tx_val = random.randint(0, 255)
-        expected_10b = predictor.encode(tx_val) # Assuming you use rx_predictor for this phase
-        scoreboard.add_expected((expected_10b, tx_val))
+        expected_10b = predictor.encode(tx_val)
+        scoreboard.add_expected(expected_10b, tx_val)
         
         # 1. Check Backpressure via Whitebox Hierarchical Access
         while int(dut.tx_cdc_fifo.full.value) == 1:
