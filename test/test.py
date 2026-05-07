@@ -161,7 +161,6 @@ async def test_pcs_verification_suite(dut):
     # PHASE 1: COVERAGE - 8b/10b BOUNDARY DISPARITY STRESS
     # =====================================================
     dut._log.info("--- Phase 1: Disparity Flip Stress ---")
-    # Sending bytes known to flip Running Disparity heavily (e.g., Dxx.x with high 1s or 0s)
     disparity_stress_bytes = [0x00, 0xFF, 0x0F, 0xF0, 0x55, 0xAA] * 5 
     
     for tx_val in disparity_stress_bytes:
@@ -182,6 +181,8 @@ async def test_pcs_verification_suite(dut):
     for i in range(20): 
         tx_val = random.randint(0, 255)
         expected_10b = predictor.encode(tx_val)
+        
+        # FIX: Removed the extra parenthesis here!
         scoreboard.add_expected(expected_10b, tx_val)
         
         # 1. Check Backpressure via Whitebox Hierarchical Access
@@ -195,9 +196,6 @@ async def test_pcs_verification_suite(dut):
         dut.tx_valid.value = 0
 
         # 3. The "Golden" Pipeline Flush
-        # Wait 2 cycles to defeat the delta-cycle simulation race.
-        # Cycle 1: Encoder registers data and pushes to FIFO.
-        # Cycle 2: FIFO registers the write and the 'full' flag completely stabilizes.
         await ClockCycles(dut.clk_sys, 2) 
     
     # Wait for the SerDes pipeline to completely drain the FIFO
@@ -220,6 +218,28 @@ async def test_pcs_verification_suite(dut):
     # Verify link maintains lock during and after the switch
     assert int(dut.link_lock_out.value) == 1, "FAIL: Dropped Link Lock during turnaround!"
 
-    # Evaluate Scoreboard
-    assert scoreboard.errors == 0, f"Test Failed with {scoreboard.errors} discrepancies."
-    dut._log.info(f"--- VERIFICATION COMPLETE: {scoreboard.match_count} Transactions Matched! ---")
+    # =====================================================
+    # PHASE 4: RX MODE (DECODER STRESS)
+    # =====================================================
+    dut._log.info("--- Phase 4: RX Mode (Checking Decoder) ---")
+    num_rx_tests = 50 
+    
+    for i in range(num_rx_tests):
+        tx_val = random.randint(0, 255)
+        symbol = predictor.encode(tx_val)
+
+        dut._log.info(f"[{i+1}/{num_rx_tests}] [RX DRIVE] Streaming Expected 0x{tx_val:02X}")
+        driver.queue_symbol(symbol)
+        
+        try:
+            # Wait for your hardware to decode and pull rx_valid high
+            await with_timeout(RisingEdge(dut.rx_valid), 15000, "ns") 
+            received_val = dut.uio_out.value.to_unsigned()
+            
+            assert received_val == tx_val, f"RX Mismatch: Expected 0x{tx_val:02X}, got 0x{received_val:02X}"
+        except SimTimeoutError:
+            assert False, f"DEADLOCK: Hardware never asserted rx_valid for 0x{tx_val:02X}."
+            
+    # Evaluate TX Scoreboard
+    assert scoreboard.errors == 0, f"Test Failed with {scoreboard.errors} TX discrepancies."
+    dut._log.info(f"--- VERIFICATION COMPLETE: 0 ERRORS DETECTED! ---")
