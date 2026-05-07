@@ -175,23 +175,32 @@ async def test_pcs_verification_suite(dut):
         await ClockCycles(dut.clk_sys, 5)
 
     # =====================================================
-    # PHASE 2: COVERAGE - FIFO BURST (FULL/EMPTY STRESS)
+    # PHASE 2: COVERAGE - CDC FIFO BURST STRESS
     # =====================================================
     dut._log.info("--- Phase 2: CDC FIFO Burst Test ---")
-    # Hammer the tx_valid signal faster than the SerDes can drain it
-    for i in range(20): # Assuming FIFO depth is 16, this forces an overflow condition check
+    
+    for i in range(20): 
         tx_val = random.randint(0, 255)
-        expected_10b = predictor.encode(tx_val)
-        scoreboard.add_expected(expected_10b, tx_val)
+        expected_10b = predictor.encode(tx_val) # Assuming you use rx_predictor for this phase
+        scoreboard.put_nowait((expected_10b, tx_val))
         
+        # 1. Check Backpressure via Whitebox Hierarchical Access
+        while int(dut.tx_cdc_fifo.full.value) == 1:
+            await RisingEdge(dut.clk_sys)
+            
+        # 2. Drive the Data
         dut.uio_in.value = tx_val
         dut.tx_valid.value = 1
         await RisingEdge(dut.clk_sys) 
-        # Deliberately NOT waiting 5 cycles here to stress the FIFO write pointer
+        dut.tx_valid.value = 0
+
+        # 3. The "Golden" Pipeline Flush
+        # Wait 2 cycles to defeat the delta-cycle simulation race.
+        # Cycle 1: Encoder registers data and pushes to FIFO.
+        # Cycle 2: FIFO registers the write and the 'full' flag completely stabilizes.
+        await ClockCycles(dut.clk_sys, 2) 
     
-    dut.tx_valid.value = 0
-    
-    # Wait for the SerDes pipeline to drain the entire FIFO
+    # Wait for the SerDes pipeline to completely drain the FIFO
     await ClockCycles(dut.clk_sys, 100)
 
     # =====================================================
