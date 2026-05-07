@@ -13,12 +13,21 @@ The PCS Link Controller LITE is a compact, area-optimized Physical Coding Sublay
 
 ## How to test
 
-Before testing, the user needs to first program the RP2040 using pcs_lite_clocks.py to configure the 10 MHz system clock.
+**1. Physical Clock Configuration**
+Before physical testing, the user must first program the demoboard's RP2040 microcontroller (using `pcs_lite_clocks.py`) to configure a 2nd clock: the slower 10 MHz System Clock (`clk_sys`) on the `ui_in` pin.
 
-Bidirectional data test - transmit and check user input/random data on TX, switch mode to RX, receive and check user input/random data on RX.
-- With demoboard and FPGA: with chip A on demoboard and chip B on FPGA, the user can input data to the transmitter chip using switches and the receiver chip can visually output the received data with on-board LEDs
-- With demoboard and cocotb script: test.py cocotb script controls the demoboard to transmit/receive random data
+**2. Automated Simulation (Cocotb Verification Suite)**
+The project includes a robust, UVM-style testbench that uses Python agents (Driver, Monitor, Predictor, and Scoreboard) to validate the RTL across four coverage phases:
+* **Phase 1 (Disparity Stress):** Drives highly skewed data patterns (e.g., `0x00`, `0xFF`) through the datapath to stress the combinational 8b/10b logic and force the Running Disparity (RD) state machine to toggle constantly.
+* **Phase 2 (CDC FIFO Burst & Backpressure):** Executes a burst-write sequence that intentionally overwhelms the Clock Domain Crossing (CDC) FIFO. This phase uses whitebox hierarchical probing to verify that the hardware correctly calculates its full state and that the transmitter properly respects backpressure without dropping a single byte due to pipeline skids.
+* **Phase 3 (LTSSM Direction Turnaround):** Triggers the `rx_req` signal to flip the half-duplex bus direction. It verifies the state machine handshake (`rx_ack`) and ensures the physical layer maintains link lock during the transition.
+* **Phase 4 (RX Mode Verification):** The testbench driver streams 50 randomized, 10-bit encoded symbols into the hardware. The Scoreboard ensures the internal deserializer and decoder accurately reconstruct the original 8-bit payloads with zero discrepancies.
+
+**3. Hardware Validation (Demoboard & FPGA Integration)**
+To physically validate the bidirectional link, the Tiny Tapeout demoboard can be interfaced with a 3.3V FPGA (such as a DE10-Lite).
+* **Physical Setup:** Ensure both boards share a common ground. At 66 MHz, signal integrity is paramount; use the shortest possible jumper wires for the two serial lines (TX and RX), ideally twisting them with ground wires to mitigate electromagnetic interference. Two additional connections (`ui_in[2]` and `uo_out[1]`) are required for the `rx_req` and `rx_ack` handshaking during mode-switching.
+* **Testing:** The user can map the FPGA's physical switches to drive parallel data into the transmitter, while the receiver's output can be mapped to the demoboard's LEDs for real-time visual confirmation of the 8b/10b link.
 
 ## External hardware
 
-Optional: FPGA for bidirectional data test between two chips.
+Optional: FPGA and jumper wires for hardware validation.

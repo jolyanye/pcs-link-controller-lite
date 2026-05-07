@@ -15,7 +15,7 @@ def setup_dual_clocks():
     sys_clk_pwm = machine.PWM(ui_in_0_pin)
     sys_clk_pwm.freq(10000000)  # 10 MHz
     sys_clk_pwm.duty_u16(32768)
-    print("System Clock (10 MHz) started on ui_in.")
+    print("System Clock (10 MHz) started on ui_in[0] pin.")
 
 if __name__ == "__main__":
     setup_dual_clocks()
