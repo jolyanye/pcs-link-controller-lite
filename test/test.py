@@ -32,6 +32,28 @@ class GoldenEncoder8b10b:
             4: ("1101", "0010", True),  5: ("1010", "1010", False),
             6: ("0110", "0110", False)
         }
+    
+    def encode(self, byte_val):
+        val5 = byte_val & 0x1F
+        val3 = (byte_val >> 5) & 0x07
+        
+        rd_minus_6b, rd_plus_6b, flips_6b = self.lut_5b6b[val5]
+        str_6b = rd_minus_6b if self.rd == 0 else rd_plus_6b
+        rd_mid = (1 - self.rd) if flips_6b else self.rd
+        
+        if val3 == 7:
+            str_4b = "1110" if rd_mid == 0 else "0001"
+            flips_4b = True
+        else:
+            rd_minus_4b, rd_plus_4b, flips_4b = self.lut_3b4b[val3]
+            str_4b = rd_minus_4b if rd_mid == 0 else rd_plus_4b
+            
+        self.rd = (1 - rd_mid) if flips_4b else rd_mid
+        
+        bits_6b = [int(str_6b[5-i]) for i in range(6)]
+        bits_4b = [int(str_4b[3-i]) for i in range(4)]
+        
+        return bits_6b + bits_4b
 
 # --- 2. UVM-STYLE AGENTS ---
 class PcsScoreboard:
