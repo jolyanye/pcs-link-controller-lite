@@ -23,9 +23,6 @@ module tt_um_pcs_link_lite (
     wire serial_in = ui_in[1];
     wire rx_req    = ui_in[2];
     wire tx_valid  = ui_in[3];
-    
-    // Unused input pins
-    wire _unused_ui = &{ui_in[7:4]};
 
     // **********************
     // OUTPUT MAPPING (uo_out)
@@ -78,8 +75,5 @@ module tt_um_pcs_link_lite (
         .occupied(occupied),
         .link_lock_out(link_lock_out)
     );
-
-    // List all unused inputs to prevent OpenLane warnings
-    wire _unused = &{ena, _unused_ui, 1'b0};
 
 endmodule
