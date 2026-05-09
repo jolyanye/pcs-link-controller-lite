@@ -87,7 +87,7 @@ class PcsRxDriver:
 async def test_pcs_verification_suite(dut):
     dut._log.info("Starting PCS LITE Verification Test (starting with TX mode)...")
 
-    cocotb.start_soon(Clock(dut.clk, 15.151, unit="ns").start())     
+    cocotb.start_soon(Clock(dut.clk, 15.152, unit="ns").start())     
     cocotb.start_soon(Clock(dut.clk_sys, 100, unit="ns").start())   
 
     predictor = Encoder8b10b()
