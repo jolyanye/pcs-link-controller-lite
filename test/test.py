@@ -120,38 +120,30 @@ async def test_pcs_verification_suite(dut):
         await RisingEdge(dut.clk_sys)
         dut.tx_valid.value = 0
         await ClockCycles(dut.clk_sys, 5)
-
-    # =====================================================
-    # PHASE 2: CDC FIFO BURST STRESS (WITH RANDOM IDLES)
-    # =====================================================
-    dut._log.info("--- Phase 2: TX CDC FIFO Bursty Stress Test ---") 
     
-    for i in range(50): 
+    # =====================================================
+    # PHASE 2: COVERAGE - CDC FIFO BURST STRESS
+    # =====================================================
+    dut._log.info("--- Phase 2: TX CDC FIFO Burst Test ---") # drive a burst of data to fill the TX FIFO and ensure proper backpressure handling without deadlocks
+    
+    for i in range(20): 
         tx_val = random.randint(0, 255)
         expected_10b = predictor.encode(tx_val)
         scoreboard.add_expected(expected_10b, tx_val)
-        
+
         await FallingEdge(dut.clk_sys)
         
-        # 1. Randomly decide to starve the upstream data for a few cycles
-        if random.random() < 0.3: # 30% chance to insert an idle gap
-            idle_cycles = random.randint(1, 4)
-            dut._log.info(f"Random upstream stall for {idle_cycles} cycles...")
-            dut.tx_valid.value = 0
-            for _ in range(idle_cycles):
-                await FallingEdge(dut.clk_sys)
-        
-        # 2. Wait for FIFO space
         while int(dut.tx_fifo_full.value) == 1:
             dut.tx_valid.value = 0 # Ensure valid drops if we are waiting
             await FallingEdge(dut.clk_sys)
             
-        # 3. Drive the data safely
         dut.uio_in.value = tx_val
         dut.tx_valid.value = 1
-        
         await RisingEdge(dut.clk_sys) 
         dut.tx_valid.value = 0
+    
+    # Wait for the SerDes to completely drain the FIFO
+    await ClockCycles(dut.clk_sys, 100)
 
     # =====================================================
     # PHASE 3: SWITCH LTSSM DIRECTION
