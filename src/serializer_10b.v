@@ -21,12 +21,12 @@ module serializer_10b (
             rd_en <= 1'b0;
         end else begin
             if (bit_cnt == 4'd8) begin
+                rd_en <= 1'b0;
                 bit_cnt <= bit_cnt + 1;
                 shift_reg <= {1'b0, shift_reg[9:1]};
             end else if (bit_cnt == 4'd9) begin
                 rd_en <= !fifo_empty;
                 bit_cnt <= 4'd0;
-                rd_en <= 1'b0;
                 if (!fifo_empty)
                     shift_reg <= data_in;
                 else
