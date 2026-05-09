@@ -122,9 +122,9 @@ async def test_pcs_verification_suite(dut):
         await ClockCycles(dut.clk_sys, 5)
 
     # =====================================================
-    # PHASE 2: CDC FIFO BURST STRESS
+    # PHASE 2: CDC FIFO BURST STRESS (WITH RANDOM IDLES)
     # =====================================================
-    dut._log.info("--- Phase 2: TX CDC FIFO Burst Test ---") 
+    dut._log.info("--- Phase 2: TX CDC FIFO Bursty Stress Test ---") 
     
     for i in range(50): 
         tx_val = random.randint(0, 255)
@@ -133,15 +133,23 @@ async def test_pcs_verification_suite(dut):
         
         await FallingEdge(dut.clk_sys)
         
+        # 1. Randomly decide to starve the upstream data for a few cycles
+        if random.random() < 0.3: # 30% chance to insert an idle gap
+            idle_cycles = random.randint(1, 4)
+            dut._log.info(f"Random upstream stall for {idle_cycles} cycles...")
+            dut.tx_valid.value = 0
+            for _ in range(idle_cycles):
+                await FallingEdge(dut.clk_sys)
+        
+        # 2. Wait for FIFO space
         while int(dut.tx_fifo_full.value) == 1:
-            dut._log.info(f"TX FIFO Full! Waiting... (Attempt {i+1})")
+            dut.tx_valid.value = 0 # Ensure valid drops if we are waiting
             await FallingEdge(dut.clk_sys)
             
-        # Drive the signals
+        # 3. Drive the data safely
         dut.uio_in.value = tx_val
         dut.tx_valid.value = 1
         
-        # Wait for the next rising edge so the RTL captures our data
         await RisingEdge(dut.clk_sys) 
         dut.tx_valid.value = 0
 
