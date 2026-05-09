@@ -156,7 +156,7 @@ module pcs_link_ctrl_top #(
         .data_in(rx_fifo_data_out),
         .rd_en(rx_rd_en),
         .data_out(rx_decoded_byte),
-        .valid_out(rx_valid),
+        .valid_out(rx_valid)
     );
 
 endmodule
