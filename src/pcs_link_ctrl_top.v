@@ -90,50 +90,6 @@ module pcs_link_ctrl_top #(
         end
     end
 
-    // **********************
-    // THE 8-DEEP SYNCHRONOUS SKID BUFFER (V3)
-    // **********************
-    wire real_fifo_full;
-    reg [9:0] skid_mem [0:7]; // Expanded to an array of 8 slots!
-    reg [2:0] skid_wr_ptr;
-    reg [2:0] skid_rd_ptr;
-    reg [3:0] skid_count;     // Can count from 0 to 8
-
-    // We MUST push data into the skid buffer if the real FIFO is full,
-    // OR if the skid buffer is currently draining (count > 0). 
-    wire skid_push = tx_fifo_wr_en && (real_fifo_full || skid_count > 0);
-    wire skid_pop  = !real_fifo_full && (skid_count > 0);
-
-    always @(posedge clk_sys or negedge rst_n) begin
-        if (!rst_n) begin
-            skid_count  <= 0;
-            skid_wr_ptr <= 0;
-            skid_rd_ptr <= 0;
-        end else begin
-            case ({skid_push, skid_pop})
-                2'b10: begin // Push only (Catching Overshoot)
-                    skid_mem[skid_wr_ptr] <= tx_enc_data;
-                    skid_wr_ptr <= skid_wr_ptr + 1;
-                    skid_count <= skid_count + 1;
-                end
-                2'b01: begin // Pop only (Draining into CDC FIFO)
-                    skid_rd_ptr <= skid_rd_ptr + 1;
-                    skid_count <= skid_count - 1;
-                end
-                2'b11: begin // Push and Pop simultaneously
-                    skid_mem[skid_wr_ptr] <= tx_enc_data;
-                    skid_wr_ptr <= skid_wr_ptr + 1;
-                    skid_rd_ptr <= skid_rd_ptr + 1;
-                end
-                default: ; 
-            endcase
-        end
-    end
-
-    // Mux the Skid Buffer into the real CDC FIFO
-    wire cdc_wr_en     = (skid_count > 0) ? 1'b1 : tx_fifo_wr_en;
-    wire [9:0] cdc_din = (skid_count > 0) ? skid_mem[skid_rd_ptr] : tx_enc_data;
-
     cdc_fifo #(
         .DATA_WIDTH(DATA_WIDTH),
         .ADDR_WIDTH(ADDR_WIDTH)
@@ -141,10 +97,10 @@ module pcs_link_ctrl_top #(
         // Write side
         .clk_wr(clk_sys),
         .rst_n_wr(rst_n && !flush),
-        .wr_en(cdc_wr_en),        
-        .data_in(cdc_din),        
-        .full(real_fifo_full),    
-        
+        .wr_en(tx_fifo_wr_en),
+        .data_in(tx_enc_data),
+        .full(tx_fifo_full),
+
         // Read side
         .clk_rd(clk_link),
         .rst_n_rd(rst_n && !flush),
@@ -152,9 +108,6 @@ module pcs_link_ctrl_top #(
         .data_out(tx_fifo_data_out),
         .empty(tx_fifo_empty)
     );
-
-    // Assert full to the testbench if the real FIFO is full, OR if our skid buffer has caught anything.
-    assign tx_fifo_full = real_fifo_full | (skid_count > 0);
 
     serializer_10b serializer(
         .clk(clk_link),
