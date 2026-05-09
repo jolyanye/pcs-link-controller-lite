@@ -1,6 +1,6 @@
 import cocotb
 from cocotb.clock import Clock
-from cocotb.triggers import RisingEdge, ClockCycles, with_timeout, ReadOnly, SimTimeoutError
+from cocotb.triggers import RisingEdge, FallingEdge, ClockCycles, with_timeout, SimTimeoutError
 from cocotb.queue import Queue
 import random
 
@@ -131,16 +131,19 @@ async def test_pcs_verification_suite(dut):
         expected_10b = predictor.encode(tx_val)
         scoreboard.add_expected(expected_10b, tx_val)
         
-        # FIX: Wait for RTL combinatorial logic to settle before checking!
-        await ReadOnly() 
+        # FIX: Wait for the falling edge. RTL logic is guaranteed to be settled here,
+        # and we are legally allowed to drive signals.
+        await FallingEdge(dut.clk_sys)
         
         while int(dut.tx_fifo_full.value) == 1:
             dut._log.info(f"TX FIFO Full! Waiting... (Attempt {i+1})")
-            await RisingEdge(dut.clk_sys)
-            await ReadOnly() # Check again after the edge settles
+            await FallingEdge(dut.clk_sys)
             
+        # Drive the signals (safely in the active phase, middle of the clock cycle)
         dut.uio_in.value = tx_val
         dut.tx_valid.value = 1
+        
+        # Wait for the next rising edge so the RTL captures our data
         await RisingEdge(dut.clk_sys) 
         dut.tx_valid.value = 0
 
