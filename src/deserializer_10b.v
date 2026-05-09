@@ -54,18 +54,29 @@ module deserializer_10b (
             if (!link_lock) begin
                 // HUNT MODE
                 if (is_comma) begin
-                    bit_cnt <= 4'd0;
                     comma_det <= 1'b1;
+                    bit_cnt <= 4'd0;
 
-                    if (lock_count == 2'd3) begin
-                        link_lock <= 1'b1;
+                    if (lock_count == 2'd0) begin
+                        // First comma found, lock onto this alignment phase
+                        lock_count <= 2'd1;
+                    end else if (bit_cnt == 4'd9) begin
+                        // Aligned comma found exactly 10 bits later!
+                        if (lock_count == 2'd3) begin
+                            link_lock <= 1'b1; // 4th aligned comma, LOCKED!
+                        end else begin
+                            lock_count <= lock_count + 1'b1; 
+                        end
                     end else begin
-                        lock_count <= lock_count + 1'b1;
+                        // Unaligned comma found. We lost the previous alignment
+                        // Restart the hunt from this new phase
+                        lock_count <= 2'd1;
                     end
                 end else begin
                     if (bit_cnt == 4'd9) begin
+                        // 10-bit boundary reached without a comma. Broken chain.
                         bit_cnt <= 4'd0;
-                        lock_count <= 2'd0;
+                        lock_count <= 2'd0; 
                     end else begin
                         bit_cnt <= bit_cnt + 1'b1;
                     end
