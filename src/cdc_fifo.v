@@ -1,6 +1,6 @@
 module cdc_fifo #(
     parameter DATA_WIDTH = 10,
-    parameter ADDR_WIDTH = 2
+    parameter ADDR_WIDTH = 4
 )(
     // Write domain (system clk)
     input wire clk_wr,
