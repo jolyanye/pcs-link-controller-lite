@@ -72,7 +72,7 @@ module tt_um_pcs_link_lite (
         .rx_ack(rx_ack),
         .occupied(occupied),
         .link_lock_out(link_lock_out),
-        .tx_fifo_full(tx_fifo_full),
+        .tx_fifo_full(tx_fifo_full)
     );
 
 endmodule
