@@ -32,6 +32,7 @@ module tt_um_pcs_link_lite (
     wire rx_ack;
     wire occupied;
     wire link_lock_out;
+    wire tx_fifo_full;
 
     // Explicitly assign each internal wire to a specific output pin
     assign uo_out[0] = serial_out;
