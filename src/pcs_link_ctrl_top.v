@@ -1,6 +1,6 @@
 module pcs_link_ctrl_top #(
     parameter DATA_WIDTH = 10,
-    parameter ADDR_WIDTH = 4
+    parameter ADDR_WIDTH = 2
 )(
     // Clock/Reset
     input wire clk_sys,

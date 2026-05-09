@@ -56,7 +56,7 @@ module tt_um_pcs_link_lite (
     // **********************
     pcs_link_ctrl_top #(
         .DATA_WIDTH(10),
-        .ADDR_WIDTH(4)
+        .ADDR_WIDTH(2)
     ) pcs_core (
         .clk_sys(clk_sys),     // Routed to the 10 MHz GPIO clock
         .clk_link(clk),        // Routed to the 66 MHz dedicated clock
