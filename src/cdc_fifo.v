@@ -29,9 +29,6 @@ module cdc_fifo #(
     reg rd_en_d1;
     reg empty_d1;
 
-    // Read pointer logic
-    wire rd_ptr_bin_next = rd_ptr_bin + (rd_en_d1 && !empty_d1 ? 1 : 0);
-
     // Pipeline registers for rd_en and empty
     always @(posedge clk_rd or negedge rst_n_rd) begin
         if (!rst_n_rd) begin
@@ -68,7 +65,7 @@ module cdc_fifo #(
     // **********************
     // Read pointer logic
     // **********************
-    wire [ADDR_WIDTH:0] rd_ptr_bin_next = rd_ptr_bin + (rd_en && !empty ? 1 : 0);
+    wire [ADDR_WIDTH:0] rd_ptr_bin_next = rd_ptr_bin + (rd_en_d1 && !empty_d1 ? 1 : 0);
     wire [ADDR_WIDTH:0] rd_ptr_gray_next = rd_ptr_bin_next ^ (rd_ptr_bin_next >> 1);
 
     always @(posedge clk_rd or negedge rst_n_rd) begin
