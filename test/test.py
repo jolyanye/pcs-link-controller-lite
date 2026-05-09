@@ -131,15 +131,13 @@ async def test_pcs_verification_suite(dut):
         expected_10b = predictor.encode(tx_val)
         scoreboard.add_expected(expected_10b, tx_val)
         
-        # FIX: Wait for the falling edge. RTL logic is guaranteed to be settled here,
-        # and we are legally allowed to drive signals.
         await FallingEdge(dut.clk_sys)
         
         while int(dut.tx_fifo_full.value) == 1:
             dut._log.info(f"TX FIFO Full! Waiting... (Attempt {i+1})")
             await FallingEdge(dut.clk_sys)
             
-        # Drive the signals (safely in the active phase, middle of the clock cycle)
+        # Drive the signals
         dut.uio_in.value = tx_val
         dut.tx_valid.value = 1
         
