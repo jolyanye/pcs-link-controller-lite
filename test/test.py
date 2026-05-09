@@ -87,7 +87,7 @@ class PcsRxDriver:
 async def test_pcs_verification_suite(dut):
     dut._log.info("Starting PCS LITE Verification Test (starting with TX mode)...")
 
-    cocotb.start_soon(Clock(dut.clk, 15.152, unit="ns").start())     
+    cocotb.start_soon(Clock(dut.clk, 15.15, unit="ns").start())     
     cocotb.start_soon(Clock(dut.clk_sys, 100, unit="ns").start())   
 
     predictor = Encoder8b10b()
@@ -133,14 +133,13 @@ async def test_pcs_verification_suite(dut):
         
         # Check FIFO status before driving new data
         while int(dut.tx_fifo_full.value) == 1:
-            dut._log.warning(f"TX FIFO Full! Waiting... (Attempt {i+1})")
+            dut._log.info(f"TX FIFO Full! Waiting... (Attempt {i+1})")
             await RisingEdge(dut.clk_sys)
             
         dut.uio_in.value = tx_val
         dut.tx_valid.value = 1
         await RisingEdge(dut.clk_sys) 
         dut.tx_valid.value = 0
-        await ClockCycles(dut.clk_sys, 2) 
     
     await ClockCycles(dut.clk_sys, 100)
 
