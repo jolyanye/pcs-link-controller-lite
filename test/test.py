@@ -140,7 +140,6 @@ async def test_pcs_verification_suite(dut):
         dut.tx_valid.value = 1
         await RisingEdge(dut.clk_sys) 
         dut.tx_valid.value = 0
-        await ClockCycles(dut.clk_sys, 2) 
     
     await ClockCycles(dut.clk_sys, 100)
 
