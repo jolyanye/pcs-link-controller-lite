@@ -1,6 +1,6 @@
 import cocotb
 from cocotb.clock import Clock
-from cocotb.triggers import RisingEdge, ClockCycles, with_timeout, SimTimeoutError
+from cocotb.triggers import RisingEdge, ClockCycles, with_timeout, ReadOnly, SimTimeoutError
 from cocotb.queue import Queue
 import random
 
@@ -124,24 +124,25 @@ async def test_pcs_verification_suite(dut):
     # =====================================================
     # PHASE 2: CDC FIFO BURST STRESS
     # =====================================================
-    dut._log.info("--- Phase 2: TX CDC FIFO Burst Test ---") # drive a burst of data to fill the TX FIFO and ensure proper backpressure handling without deadlocks
+    dut._log.info("--- Phase 2: TX CDC FIFO Burst Test ---") 
     
     for i in range(50): 
         tx_val = random.randint(0, 255)
         expected_10b = predictor.encode(tx_val)
         scoreboard.add_expected(expected_10b, tx_val)
         
-        # Check FIFO status before driving new data
+        # FIX: Wait for RTL combinatorial logic to settle before checking!
+        await ReadOnly() 
+        
         while int(dut.tx_fifo_full.value) == 1:
             dut._log.info(f"TX FIFO Full! Waiting... (Attempt {i+1})")
             await RisingEdge(dut.clk_sys)
+            await ReadOnly() # Check again after the edge settles
             
         dut.uio_in.value = tx_val
         dut.tx_valid.value = 1
         await RisingEdge(dut.clk_sys) 
         dut.tx_valid.value = 0
-    
-    await ClockCycles(dut.clk_sys, 100)
 
     # =====================================================
     # PHASE 3: SWITCH LTSSM DIRECTION
