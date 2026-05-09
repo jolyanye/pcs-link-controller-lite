@@ -87,7 +87,7 @@ class PcsRxDriver:
 async def test_pcs_verification_suite(dut):
     dut._log.info("Starting PCS LITE Verification Test (starting with TX mode)...")
 
-    cocotb.start_soon(Clock(dut.clk, 15.15, unit="ns").start())     
+    cocotb.start_soon(Clock(dut.clk, 15.151, unit="ns").start())     
     cocotb.start_soon(Clock(dut.clk_sys, 100, unit="ns").start())   
 
     predictor = Encoder8b10b()
@@ -126,7 +126,7 @@ async def test_pcs_verification_suite(dut):
     # =====================================================
     dut._log.info("--- Phase 2: TX CDC FIFO Burst Test ---") # drive a burst of data to fill the TX FIFO and ensure proper backpressure handling without deadlocks
     
-    for i in range(30): 
+    for i in range(50): 
         tx_val = random.randint(0, 255)
         expected_10b = predictor.encode(tx_val)
         scoreboard.add_expected(expected_10b, tx_val)
