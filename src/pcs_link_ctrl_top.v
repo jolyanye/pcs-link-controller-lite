@@ -99,7 +99,7 @@ module pcs_link_ctrl_top #(
     reg skid_rd_ptr;
     reg [1:0] skid_count;
 
-    wire skid_push = tx_fifo_wr_en && real_fifo_full;
+    wire skid_push = tx_fifo_wr_en && (real_fifo_full || skid_count > 0);
     wire skid_pop  = !real_fifo_full && (skid_count > 0);
 
     always @(posedge clk_sys or negedge rst_n) begin
