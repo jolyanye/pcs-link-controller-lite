@@ -13,17 +13,10 @@ The PCS Link Controller LITE is a compact, area-optimized Physical Coding Sublay
 
 ## How to test
 
-**1. Clock Configuration**
+**Clock Configuration**
 Before physical testing, the user must first program the demoboard's RP2040 microcontroller (using `pcs_lite_clocks.py`) to configure a 2nd clock: the slower 10 MHz System Clock (`clk_sys`) on the `ui_in[0]` pin.
 
-**2. Pre-Silicon Testing (test.py)**
-The project includes a UVM-style testbench (used for RTL testing) that uses Python agents (Driver, Monitor, Predictor, and Scoreboard) to validate the RTL across four coverage phases:
-* **Phase 1 (Disparity Stress):** Drives highly skewed data patterns (e.g., `0x00`, `0xFF`) through the datapath to stress the combinational 8b/10b logic and force the Running Disparity (RD) state machine to toggle constantly.
-* **Phase 2 (CDC FIFO Burst & Backpressure):** Executes a burst-write sequence that intentionally overwhelms the CDC FIFO. This phase verifies that the hardware correctly calculates its "full" state and that the transmitter properly respects backpressure without dropping bytes.
-* **Phase 3 (LTSSM Direction Switch):** Triggers the `rx_req` signal to flip the half-duplex bus direction. It verifies the state machine handshake (`rx_ack`) and ensures the PCS maintains link lock during the transition.
-* **Phase 4 (RX Mode Verification):** The testbench driver streams 50 randomized, 10-bit encoded symbols into the hardware. The Scoreboard ensures the internal deserializer and decoder accurately reconstruct the original 8-bit payloads with zero discrepancies.
-
-**3. Post-Silicon Testing (Physical Hardware)**
+**Testing**
 * **Option A: Standalone Functional Test (MicroPython Script)**
   Users can validate the functional logic using the demoboard without external hardware by flashing the provided `post_sil_test.py` and `encoder.py` scripts to the onboard RP2040. The script manually drives the clocks to bit-bang a continuous sequence of random test vectors. It defaults to TX mode, generating parallel data and verifying the 10-bit serialized output. Sending `m` in the console will command the LTSSM to flip the bus to RX mode, streaming 10-bit symbols into the ASIC and checking the decoded parallel output.
   *(Note: Due to the GPIO execution limits of MicroPython, this script operates in the low kHz range to validate functional logic. True 66 MHz at-speed validation requires the FPGA setup in Option B).*
