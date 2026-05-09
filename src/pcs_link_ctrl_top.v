@@ -80,16 +80,6 @@ module pcs_link_ctrl_top #(
         .data_out(tx_enc_data)
     );
 
-     // Wait 1 cycle for the encoder to produce last set of data for fifo
-    reg tx_fifo_wr_en;
-    always @(posedge clk_sys or negedge rst_n) begin
-        if (!rst_n) begin
-            tx_fifo_wr_en <= 1'b0;
-        end else begin
-            tx_fifo_wr_en <= tx_en;
-        end
-    end
-
     cdc_fifo #(
         .DATA_WIDTH(DATA_WIDTH),
         .ADDR_WIDTH(ADDR_WIDTH)
@@ -97,7 +87,7 @@ module pcs_link_ctrl_top #(
         // Write side
         .clk_wr(clk_sys),
         .rst_n_wr(rst_n && !flush),
-        .wr_en(tx_fifo_wr_en),
+        .wr_en(tx_en),
         .data_in(tx_enc_data),
         .full(tx_fifo_full),
 

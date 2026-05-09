@@ -4,7 +4,7 @@ module encoder_8b10b (
     input wire tx_en,
     input wire [7:0] data_in,
     input wire k_select,  // 1 = k-code, 0 = d-code
-    output reg [9:0] data_out
+    output wire [9:0] data_out
 );
 
     // Intermediate values
@@ -98,13 +98,13 @@ module encoder_8b10b (
     // **********************
     // Output logic
     // **********************
+    assign data_out = {data_4b, data_6b};
+
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             rd <= 1'b0;
-            data_out <= 10'b0101111100;
         end else if (tx_en) begin
             rd <= unbalanced_4b ? ~rd_mid : rd_mid;
-            data_out <= {data_4b, data_6b};
         end
     end
 

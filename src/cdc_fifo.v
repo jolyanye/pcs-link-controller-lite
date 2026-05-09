@@ -26,20 +26,6 @@ module cdc_fifo #(
     reg [ADDR_WIDTH:0] wr_ptr_gray_sync1, wr_ptr_gray_sync2;
     reg [ADDR_WIDTH:0] rd_ptr_gray_sync1, rd_ptr_gray_sync2;
 
-    reg rd_en_d1;
-    reg empty_d1;
-
-    // Pipeline registers for rd_en and empty
-    always @(posedge clk_rd or negedge rst_n_rd) begin
-        if (!rst_n_rd) begin
-            rd_en_d1 <= 1'b0;
-            empty_d1 <= 1'b1;
-        end else begin
-            rd_en_d1 <= rd_en;
-            empty_d1 <= empty;
-        end
-    end
-
     // **********************
     // Write domain logic
     // **********************
@@ -65,7 +51,7 @@ module cdc_fifo #(
     // **********************
     // Read pointer logic
     // **********************
-    wire [ADDR_WIDTH:0] rd_ptr_bin_next = rd_ptr_bin + (rd_en_d1 && !empty_d1 ? 1 : 0);
+    wire [ADDR_WIDTH:0] rd_ptr_bin_next = rd_ptr_bin + (rd_en && !empty ? 1 : 0);
     wire [ADDR_WIDTH:0] rd_ptr_gray_next = rd_ptr_bin_next ^ (rd_ptr_bin_next >> 1);
 
     always @(posedge clk_rd or negedge rst_n_rd) begin
