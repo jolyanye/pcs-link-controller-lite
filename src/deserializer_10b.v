@@ -59,7 +59,7 @@ module deserializer_10b (
                         lock_count <= 2'd1;
                     end else if (bit_cnt == 4'd9) begin
                         if (lock_count == 2'd3) begin
-                            link_lock <= 1'b1; // 4th aligned comma, LOCKED!
+                            link_lock <= 1'b1; // 4th aligned comma - LOCKED
                         end else begin
                             lock_count <= lock_count + 1'b1; 
                         end
@@ -70,7 +70,6 @@ module deserializer_10b (
                     end
                 end else begin
                     if (bit_cnt == 4'd9) begin
-                        // 10-bit boundary reached without a comma. Broken chain.
                         bit_cnt <= 4'd0;
                         lock_count <= 2'd0; 
                     end else begin
@@ -78,12 +77,11 @@ module deserializer_10b (
                     end
                 end
             end else begin
-                // LOCKED MODE
-                // Loss of Lock Detection
+                // LOCKED MODE + Loss of Lock Detection
                 if ((is_comma && bit_cnt != 4'd9) || (run_length > 4'd6)) begin
-                    link_lock <= 1'b0;      // Drop lock
-                    lock_count <= 2'd0;     // Reset verification counter
-                    bit_cnt <= 4'd0;        // Re-align for hunt mode
+                    link_lock <= 1'b0;
+                    lock_count <= 2'd0;
+                    bit_cnt <= 4'd0;
                 end else if (bit_cnt == 4'd9) begin
                     bit_cnt <= 4'd0;
                     if (is_comma) begin

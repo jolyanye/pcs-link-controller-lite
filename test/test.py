@@ -166,13 +166,12 @@ async def pcs_verification(dut):
     # PHASE 4: RX MODE
     # =====================================================
     dut._log.info("--- Phase 4: RX Mode ---")
-    num_rx_tests = 50 
     
-    for i in range(num_rx_tests):
+    for i in range(50):
         tx_val = random.randint(0, 255)
         symbol = predictor.encode(tx_val)
 
-        dut._log.info(f"[{i+1}/{num_rx_tests}] [RX DRIVE] Streaming Expected 0x{tx_val:02X}")
+        dut._log.info(f"[{i+1}/{50}] [RX DRIVE] Streaming Expected 0x{tx_val:02X}")
         driver.queue_symbol(symbol)
         
         try:
@@ -184,19 +183,19 @@ async def pcs_verification(dut):
             assert False, f"DEADLOCK: Hardware never asserted rx_valid for 0x{tx_val:02X}."
     
     # =====================================================
-    # PHASE 5: DESERIALIZER HUNT-MODE THRASHING
+    # PHASE 5: DESERIALIZER LOCKING/RE-LOCKING TEST
     # =====================================================
-    dut._log.info("--- Phase 5: Deserializer Hunt-Mode Thrashing ---")
+    dut._log.info("--- Phase 5: Deserializer Locking/Re-locking Test ---")
     
-    # Force loss of lock by sending noise (simulating unplugged cable)
+    # Force loss of lock by sending noise
     dut._log.info("Sending noise to force loss of lock...")
     for _ in range(50):
         driver.queue_symbol([random.choice([0, 1]) for _ in range(10)])
     
-    await ClockCycles(dut.clk, 500) # Wait for noise to process
+    await ClockCycles(dut.clk, 500)
     assert int(dut.link_lock_out.value) == 0, "FAIL: Deserializer did not drop lock on noise!"
 
-    # Glitchy connection: 2 commas then noise (should NOT lock)
+    # Send 2 commas then noise (should NOT lock)
     dut._log.info("Sending glitchy connection (2 commas + noise)...")
     driver.queue_symbol(driver.idle_comma)
     driver.queue_symbol(driver.idle_comma)
@@ -206,7 +205,7 @@ async def pcs_verification(dut):
     await ClockCycles(dut.clk, 320) 
     assert int(dut.link_lock_out.value) == 0, "FAIL: Deserializer falsely locked on glitch!"
 
-    # Stable connection: 4 commas to restore lock
+    # Send 4 commas to restore lock
     dut._log.info("Sending stable commas to restore lock...")
     for _ in range(5):
         driver.queue_symbol(driver.idle_comma)
@@ -227,18 +226,16 @@ async def pcs_verification(dut):
     sym_good_1 = predictor.encode(tx_val_good_1)
     sym_bad = predictor.encode(tx_val_bad)
     
-    # Intelligent Single-Bit Flip (Disparity-Aware)
     ones_count = sum(sym_bad[:6])
-    
     if ones_count == 2:
-        # RD+ State: Flip a '1' to 'zero' to create a block with only 1 one (Universally Invalid)
+        # RD+ State: Flip a '1' to 'zero' to create a block with only 1 one
         for i in range(6):
             if sym_bad[i] == 1:
                 sym_bad[i] = 0
                 dut._log.info(f"Flipped bit at index {i} (1->zero) to create invalid weight symbol (1 one).")
                 break
     else:
-        # RD- State: Flip a 'zero' to '1' to create a block with 5 ones (Universally Invalid)
+        # RD- State: Flip a 'zero' to '1' to create a block with 5 ones
         for i in range(6):
             if sym_bad[i] == 0:
                 sym_bad[i] = 1
@@ -264,11 +261,11 @@ async def pcs_verification(dut):
     # =====================================================
     dut._log.info("--- Phase 7: LTSSM Turnaround Stress ---")
     
-    # Rapidly toggle the request pin to try and trap the state machine
+    # Rapidly toggle the request pin to switch modes
     for _ in range(10):
-        dut.rx_req.value = 0 # Request TX
+        dut.rx_req.value = 0
         await ClockCycles(dut.clk_sys, random.randint(1, 3))
-        dut.rx_req.value = 1 # Switch to RX
+        dut.rx_req.value = 1
         await ClockCycles(dut.clk_sys, random.randint(1, 3))
         
     dut.rx_req.value = 1
@@ -284,18 +281,18 @@ async def pcs_verification(dut):
     # =====================================================
     dut._log.info("--- Phase 8: RX CDC FIFO Backpressure Overflow ---")
     
-    # Switch back to TX mode. 
+    # Switch back to TX mode
     dut.rx_req.value = 0
     await ClockCycles(dut.clk_sys, 10)
     
-    # Stream 10 bytes into the deserializer 
+    # Overflow deserializer + FIFO
     overflow_vals = [0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xAA]
     for val in overflow_vals:
         driver.queue_symbol(predictor.encode(val))
         
     await ClockCycles(dut.clk, 200)
     
-    # Switch back to RX to drain whatever survived
+    # Switch back to RX to drain FIFO
     dut.rx_req.value = 1
     await with_timeout(RisingEdge(dut.rx_ack), 3000, "ns")
     
@@ -305,12 +302,13 @@ async def pcs_verification(dut):
         try:
             await with_timeout(RisingEdge(dut.rx_valid), 1500, "ns")
             survivors.append(dut.uio_out.value.to_unsigned())
-            await ClockCycles(dut.clk_sys, 1) # Step past valid
+            await ClockCycles(dut.clk_sys, 1)
         except SimTimeoutError:
             break
             
     assert len(survivors) <= 4, f"FAIL: RX FIFO returned {len(survivors)} bytes, exceeding physical capacity!"
     dut._log.info("PASS: RX CDC FIFO safely dropped overflowing data without corrupting pointers.")
 
-    assert scoreboard.errors == 0, f"Test Failed with {scoreboard.errors} TX discrepancies."
+    # End of test
+    assert scoreboard.errors == 0, f"Test Failed with {scoreboard.errors} errors."
     dut._log.info(f"--- VERIFICATION COMPLETE: 0 ERRORS DETECTED! ---")
