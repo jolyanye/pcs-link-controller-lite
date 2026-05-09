@@ -33,8 +33,6 @@ module deserializer_10b (
             comma_det <= 1'b0;
             link_lock <= 1'b0;
             lock_count <= 2'd0;
-            
-            // Reset new trackers
             run_length <= 4'd0;
             last_bit <= 1'b0;
         end else begin
@@ -44,7 +42,6 @@ module deserializer_10b (
 
             // Track Consecutive Identical Bits
             if (serial_in == last_bit) begin
-                // Saturating counter to prevent overflow
                 if (run_length < 4'd15) run_length <= run_length + 1'b1;
             end else begin
                 run_length <= 4'd1;
@@ -61,27 +58,25 @@ module deserializer_10b (
                         // First comma found, lock onto this alignment phase
                         lock_count <= 2'd1;
                     end else if (bit_cnt == 4'd9) begin
-                        // Aligned comma found exactly 10 bits later!
-                        if (lock_count == 2'd3) begin
+=                        if (lock_count == 2'd3) begin
                             link_lock <= 1'b1; // 4th aligned comma, LOCKED!
                         end else begin
                             lock_count <= lock_count + 1'b1; 
                         end
                     end else begin
-                        // Unaligned comma found. We lost the previous alignment
+                        // Unaligned comma found - lost the previous alignment
                         // Restart the hunt from this new phase
                         lock_count <= 2'd1;
                     end
                 end else begin
                     if (bit_cnt == 4'd9) begin
-                        // 10-bit boundary reached without a comma. Broken chain.
+                        // 10-bit boundary reached without a comma
                         bit_cnt <= 4'd0;
                         lock_count <= 2'd0; 
                     end else begin
                         bit_cnt <= bit_cnt + 1'b1;
                     end
                 end
-                
             end else begin
                 // LOCKED MODE
                 // Loss of Lock Detection
@@ -91,7 +86,6 @@ module deserializer_10b (
                     bit_cnt <= 4'd0;        // Re-align for hunt mode
                 end else if (bit_cnt == 4'd9) begin
                     bit_cnt <= 4'd0;
-                    
                     if (is_comma) begin
                         comma_det <= 1'b1;
                     end else if (!fifo_full) begin
