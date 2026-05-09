@@ -10,13 +10,15 @@ module deserializer_10b (
 
     reg [9:0] shift_reg;
     reg [3:0] bit_cnt;
-    reg [1:0] lock_count; // ensure stable comma detection before locking
+    reg [1:0] lock_count; 
     reg comma_det;
+
+    reg [3:0] run_length;
+    reg last_bit;
 
     localparam COMMA_N = 10'b0101111100; // RD- Comma LSB-first
     localparam COMMA_P = 10'b1010000011; // RD+ Comma LSB-first
 
-    // Combinational look-ahead
     wire [9:0] current_word = {serial_in, shift_reg[9:1]};
     wire is_comma = (current_word == COMMA_P) || (current_word == COMMA_N);
 
@@ -31,10 +33,23 @@ module deserializer_10b (
             comma_det <= 1'b0;
             link_lock <= 1'b0;
             lock_count <= 2'd0;
+            
+            // Reset new trackers
+            run_length <= 4'd0;
+            last_bit <= 1'b0;
         end else begin
             shift_reg <= current_word;
             comma_det <= 1'b0;
             wr_en <= 1'b0;
+
+            // Track Consecutive Identical Bits
+            if (serial_in == last_bit) begin
+                // Saturating counter to prevent overflow
+                if (run_length < 4'd15) run_length <= run_length + 1'b1;
+            end else begin
+                run_length <= 4'd1;
+                last_bit <= serial_in;
+            end
 
             if (!link_lock) begin
                 // HUNT MODE
@@ -49,7 +64,6 @@ module deserializer_10b (
                     end
                 end else begin
                     if (bit_cnt == 4'd9) begin
-                        // 10-bit boundary reached without a comma
                         bit_cnt <= 4'd0;
                         lock_count <= 2'd0;
                     end else begin
@@ -59,10 +73,14 @@ module deserializer_10b (
                 
             end else begin
                 // LOCKED MODE
-                if (bit_cnt == 4'd9) begin
+                // Loss of Lock Detection
+                if ((is_comma && bit_cnt != 4'd9) || (run_length > 4'd6)) begin
+                    link_lock <= 1'b0;      // Drop lock
+                    lock_count <= 2'd0;     // Reset verification counter
+                    bit_cnt <= 4'd0;        // Re-align for hunt mode
+                end else if (bit_cnt == 4'd9) begin
                     bit_cnt <= 4'd0;
                     
-                    // Only write to FIFO if it's locked, not full, and not an idle comma
                     if (is_comma) begin
                         comma_det <= 1'b1;
                     end else if (!fifo_full) begin
