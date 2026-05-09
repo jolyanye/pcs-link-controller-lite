@@ -209,7 +209,7 @@ async def test_pcs_verification_suite(dut):
     driver.queue_symbol(driver.idle_comma)
     driver.queue_symbol(driver.idle_comma)
     for _ in range(30):
-        driver.queue_symbol([random.choice([1]) for _ in range(10)])
+        driver.queue_symbol([random.choice([0, 1]) for _ in range(10)])
         
     await ClockCycles(dut.clk, 320) 
     assert int(dut.link_lock_out.value) == 0, "FAIL: Deserializer falsely locked on glitch!"
@@ -266,7 +266,14 @@ async def test_pcs_verification_suite(dut):
         
     # Settle back into RX mode
     dut.rx_req.value = 1
-    await with_timeout(RisingEdge(dut.rx_ack), 3000, "ns")
+    
+    # FIX: Wait half a cycle to let everything settle from the loop
+    await FallingEdge(dut.clk_sys)
+    
+    # Only wait for the RisingEdge if the hardware hasn't already reached RX mode!
+    if int(dut.rx_ack.value) == 0:
+        await with_timeout(RisingEdge(dut.rx_ack), 3000, "ns")
+        
     dut._log.info("PASS: LTSSM survived rapid thrashing without deadlocking.")
 
     # =====================================================
