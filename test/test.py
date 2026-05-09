@@ -229,19 +229,37 @@ async def test_pcs_verification_suite(dut):
     
     # Send a good byte, a bad byte, and a good byte
     tx_val_good_1 = 0xAA
+    tx_val_bad    = 0x00 # 0x00 is a great target. Its RD- 6b code is 100111 (exactly 4 ones)
     tx_val_good_2 = 0x33
     
     sym_good_1 = predictor.encode(tx_val_good_1)
+    sym_bad = predictor.encode(tx_val_bad)
     
-    # FIX: Inject a universally illegal 10b symbol (e.g., all 1s).
-    # This prevents accidental aliasing and guarantees the LUT throws decode_err.
-    sym_bad = [1, 1, 1, 1, 1, 1, 1, 1, 1, 1] 
-    
+    # FIX: Intelligent Single-Bit Flip
+    # Find the first '0' in the 6-bit block and flip it to '1'.
+    # If the block had 4 ones, it now has 5 ones. The LUT is guaranteed to reject it.
+    for i in range(6):
+        if sym_bad[i] == 0:
+            sym_bad[i] = 1
+            dut._log.info(f"Flipped bit at index {i} to create invalid weight symbol.")
+            break
+            
     sym_good_2 = predictor.encode(tx_val_good_2)
     
     driver.queue_symbol(sym_good_1)
     driver.queue_symbol(sym_bad)
     driver.queue_symbol(sym_good_2)
+    
+    # Expect good 1
+    await with_timeout(RisingEdge(dut.rx_valid), 3000, "ns")
+    assert dut.uio_out.value.to_unsigned() == tx_val_good_1, "FAIL: Good byte 1 corrupted."
+    
+    # Wait for the next valid signal. If the hardware erroneously passes the bad byte, 
+    # it will fail this assertion because it's checking against good 2!
+    await ClockCycles(dut.clk_sys, 1) # Step past the current valid edge
+    await with_timeout(RisingEdge(dut.rx_valid), 3000, "ns")
+    assert dut.uio_out.value.to_unsigned() == tx_val_good_2, "FAIL: Decoder failed to drop invalid byte!"
+    dut._log.info("PASS: Decoder successfully isolated and dropped the corrupted byte.")
 
     # =====================================================
     # PHASE 7: LTSSM RAPID TURNAROUND STRESS
@@ -298,7 +316,6 @@ async def test_pcs_verification_suite(dut):
         except SimTimeoutError:
             break
             
-    dut._log.info(f"Survivors recovered from flooded RX FIFO: {[hex(x) for x in survivors]}")
     assert len(survivors) <= 4, f"FAIL: RX FIFO returned {len(survivors)} bytes, exceeding physical capacity!"
     dut._log.info("PASS: RX CDC FIFO safely dropped overflowing data without corrupting pointers.")
 
