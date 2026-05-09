@@ -128,7 +128,6 @@ module pcs_link_ctrl_top #(
         .fifo_full(rx_fifo_full),
         .data_out(rx_deser_data_out),
         .wr_en(rx_deser_wr_en),
-        .comma_det(),
         .link_lock(link_lock_out)
     );
 
@@ -158,7 +157,6 @@ module pcs_link_ctrl_top #(
         .rd_en(rx_rd_en),
         .data_out(rx_decoded_byte),
         .valid_out(rx_valid),
-        .decode_err()
     );
 
 endmodule

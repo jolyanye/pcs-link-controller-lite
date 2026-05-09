@@ -5,13 +5,13 @@ module deserializer_10b (
     input wire fifo_full,
     output reg [9:0] data_out,
     output reg wr_en,
-    output reg comma_det,
     output reg link_lock
 );
 
     reg [9:0] shift_reg;
     reg [3:0] bit_cnt;
     reg [1:0] lock_count; // ensure stable comma detection before locking
+    reg comma_det;
 
     localparam COMMA_N = 10'b0101111100; // RD- Comma LSB-first
     localparam COMMA_P = 10'b1010000011; // RD+ Comma LSB-first

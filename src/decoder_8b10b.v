@@ -4,8 +4,7 @@ module decoder_8b10b (
     input wire [9:0] data_in,
     input wire rd_en,
     output reg [7:0] data_out,
-    output reg valid_out,
-    output reg decode_err
+    output reg valid_out
 );
 
     // Intermediate values
@@ -16,6 +15,7 @@ module decoder_8b10b (
     reg [2:0] decoded_3b;
     reg decode_err_6b;
     reg decode_err_4b;
+    reg decode_err;
 
     // **********************
     // 6b/5b conversion LUT
