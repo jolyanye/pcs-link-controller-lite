@@ -124,23 +124,19 @@ async def pcs_verification(dut):
     # =====================================================
     # PHASE 2: COVERAGE - CDC FIFO BURST STRESS
     # =====================================================
-    dut._log.info("--- Phase 2: TX CDC FIFO Burst Test ---") # drive a burst of data to fill the TX FIFO and ensure proper backpressure handling without deadlocks
+    dut._log.info("--- Phase 2: TX CDC FIFO Burst Test ---") 
     
     for i in range(20): 
         tx_val = random.randint(0, 255)
         expected_10b = predictor.encode(tx_val)
         scoreboard.add_expected(expected_10b, tx_val)
 
-        await FallingEdge(dut.clk_sys)
-        
-        while int(dut.tx_fifo_full.value) == 1:
-            dut.tx_valid.value = 0 # Ensure valid drops if we are waiting
-            await FallingEdge(dut.clk_sys)
-            
+        # Drive data continuously on the rising edge without checking for FIFO full
         dut.uio_in.value = tx_val
         dut.tx_valid.value = 1
         await RisingEdge(dut.clk_sys) 
-        dut.tx_valid.value = 0
+        
+    dut.tx_valid.value = 0
     
     # Wait for the SerDes to completely drain the FIFO
     await ClockCycles(dut.clk_sys, 100)
