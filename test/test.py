@@ -122,26 +122,36 @@ async def test_pcs_verification_suite(dut):
         await ClockCycles(dut.clk_sys, 5)
 
     # =====================================================
-    # PHASE 2: CDC FIFO BURST STRESS
+    # PHASE 2: CDC FIFO BURST STRESS (WITH RANDOM IDLES)
     # =====================================================
-    dut._log.info("--- Phase 2: TX CDC FIFO Burst Test ---") # drive a burst of data to fill the TX FIFO and ensure proper backpressure handling without deadlocks
+    dut._log.info("--- Phase 2: TX CDC FIFO Bursty Stress Test ---") 
     
     for i in range(50): 
         tx_val = random.randint(0, 255)
         expected_10b = predictor.encode(tx_val)
         scoreboard.add_expected(expected_10b, tx_val)
         
-        # Check FIFO status before driving new data
+        await FallingEdge(dut.clk_sys)
+        
+        # 1. Randomly decide to starve the upstream data for a few cycles
+        if random.random() < 0.3: # 30% chance to insert an idle gap
+            idle_cycles = random.randint(1, 4)
+            dut._log.info(f"Random upstream stall for {idle_cycles} cycles...")
+            dut.tx_valid.value = 0
+            for _ in range(idle_cycles):
+                await FallingEdge(dut.clk_sys)
+        
+        # 2. Wait for FIFO space
         while int(dut.tx_fifo_full.value) == 1:
-            dut._log.info(f"TX FIFO Full! Waiting... (Attempt {i+1})")
-            await RisingEdge(dut.clk_sys)
+            dut.tx_valid.value = 0 # Ensure valid drops if we are waiting
+            await FallingEdge(dut.clk_sys)
             
+        # 3. Drive the data safely
         dut.uio_in.value = tx_val
         dut.tx_valid.value = 1
+        
         await RisingEdge(dut.clk_sys) 
         dut.tx_valid.value = 0
-    
-    await ClockCycles(dut.clk_sys, 100)
 
     # =====================================================
     # PHASE 3: SWITCH LTSSM DIRECTION
@@ -180,6 +190,119 @@ async def test_pcs_verification_suite(dut):
             assert received_val == tx_val, f"RX Mismatch: Expected 0x{tx_val:02X}, got 0x{received_val:02X}"
         except SimTimeoutError:
             assert False, f"DEADLOCK: Hardware never asserted rx_valid for 0x{tx_val:02X}."
+    
+    # =====================================================
+    # PHASE 5: DESERIALIZER HUNT-MODE THRASHING
+    # =====================================================
+    dut._log.info("--- Phase 5: Deserializer Hunt-Mode Thrashing ---")
+    
+    # 1. Force loss of lock by sending noise (simulating unplugged cable)
+    dut._log.info("Sending noise to force loss of lock...")
+    for _ in range(50):
+        driver.queue_symbol([random.choice([1]) for _ in range(10)])
+    
+    await ClockCycles(dut.clk, 500) # Wait for noise to process
+    assert int(dut.link_lock_out.value) == 0, "FAIL: Deserializer did not drop lock on noise!"
+
+    # 2. Glitchy connection: 2 commas then noise (should NOT lock)
+    dut._log.info("Sending glitchy connection (2 commas + noise)...")
+    driver.queue_symbol(driver.idle_comma)
+    driver.queue_symbol(driver.idle_comma)
+    for _ in range(30):
+        driver.queue_symbol([random.choice([1]) for _ in range(10)])
+        
+    await ClockCycles(dut.clk, 400)
+    assert int(dut.link_lock_out.value) == 0, "FAIL: Deserializer falsely locked on glitch!"
+
+    # 3. Stable connection: 4 commas to restore lock
+    dut._log.info("Sending stable commas to restore lock...")
+    for _ in range(5):
+        driver.queue_symbol(driver.idle_comma)
+        
+    await with_timeout(RisingEdge(dut.link_lock_out), 2000, "ns")
+    dut._log.info("PASS: Deserializer successfully re-locked.")
+
+    # =====================================================
+    # PHASE 6: RX ERROR INJECTION (NEGATIVE TESTING)
+    # =====================================================
+    dut._log.info("--- Phase 6: RX Error Injection ---")
+    
+    # Send a good byte, a bad byte, and a good byte
+    tx_val_good_1 = 0xAA
+    tx_val_bad    = 0x55
+    tx_val_good_2 = 0x33
+    
+    sym_good_1 = predictor.encode(tx_val_good_1)
+    sym_bad = predictor.encode(tx_val_bad)
+    sym_bad[5] = 1 - sym_bad[5] # Flip a bit in the middle of the 10b symbol to invalidate it!
+    sym_good_2 = predictor.encode(tx_val_good_2)
+    
+    driver.queue_symbol(sym_good_1)
+    driver.queue_symbol(sym_bad)
+    driver.queue_symbol(sym_good_2)
+    
+    # Expect good 1
+    await with_timeout(RisingEdge(dut.rx_valid), 3000, "ns")
+    assert dut.uio_out.value.to_unsigned() == tx_val_good_1, "FAIL: Good byte 1 corrupted."
+    
+    # Wait for the next valid signal. If the hardware erroneously passes the bad byte, 
+    # it will fail this assertion because it's checking against good 2!
+    await ClockCycles(dut.clk_sys, 1) # Step past the current valid edge
+    await with_timeout(RisingEdge(dut.rx_valid), 3000, "ns")
+    assert dut.uio_out.value.to_unsigned() == tx_val_good_2, "FAIL: Decoder failed to drop invalid byte!"
+    dut._log.info("PASS: Decoder successfully isolated and dropped the corrupted byte.")
+
+    # =====================================================
+    # PHASE 7: LTSSM RAPID TURNAROUND STRESS
+    # =====================================================
+    dut._log.info("--- Phase 7: LTSSM Turnaround Stress ---")
+    
+    # Rapidly toggle the request pin to try and trap the state machine
+    for _ in range(10):
+        dut.rx_req.value = 0 # Request TX
+        await ClockCycles(dut.clk_sys, random.randint(1, 3))
+        dut.rx_req.value = 1 # Rapidly switch to RX
+        await ClockCycles(dut.clk_sys, random.randint(1, 3))
+        
+    # Settle back into RX mode
+    dut.rx_req.value = 1
+    await with_timeout(RisingEdge(dut.rx_ack), 3000, "ns")
+    dut._log.info("PASS: LTSSM survived rapid thrashing without deadlocking.")
+
+    # =====================================================
+    # PHASE 8: RX CDC FIFO BACKPRESSURE OVERFLOW
+    # =====================================================
+    dut._log.info("--- Phase 8: RX CDC FIFO Backpressure Overflow ---")
+    
+    # Switch back to TX mode. 
+    # In TX mode, rx_rd_en is forced to 0 by the LTSSM, so the RX FIFO cannot drain.
+    dut.rx_req.value = 0
+    await ClockCycles(dut.clk_sys, 10)
+    
+    # Stream 10 bytes into the deserializer. 
+    overflow_vals = [0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xAA]
+    for val in overflow_vals:
+        driver.queue_symbol(predictor.encode(val))
+        
+    await ClockCycles(dut.clk, 200)
+    
+    # Switch back to RX to drain whatever survived
+    dut.rx_req.value = 1
+    await with_timeout(RisingEdge(dut.rx_ack), 3000, "ns")
+    
+    survivors = []
+    # Collect whatever comes out of the FIFO
+    for _ in range(6): 
+        try:
+            await with_timeout(RisingEdge(dut.rx_valid), 1500, "ns")
+            survivors.append(dut.uio_out.value.to_unsigned())
+            await ClockCycles(dut.clk_sys, 1) # Step past valid
+        except SimTimeoutError:
+            break
             
+    dut._log.info(f"Survivors recovered from flooded RX FIFO: {[hex(x) for x in survivors]}")
+    assert len(survivors) <= 4, f"FAIL: RX FIFO returned {len(survivors)} bytes, exceeding physical capacity!"
+    dut._log.info("PASS: RX CDC FIFO safely dropped overflowing data without corrupting pointers.")
+
     assert scoreboard.errors == 0, f"Test Failed with {scoreboard.errors} TX discrepancies."
     dut._log.info(f"--- VERIFICATION COMPLETE: 0 ERRORS DETECTED! ---")
