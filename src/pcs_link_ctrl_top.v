@@ -90,6 +90,31 @@ module pcs_link_ctrl_top #(
         end
     end
 
+    // **********************
+    // THE SKID BUFFER (PIPELINE DROP FIX)
+    // **********************
+    wire real_fifo_full;
+    reg [9:0] skid_buffer;
+    reg skid_valid;
+
+    always @(posedge clk_sys or negedge rst_n) begin
+        if (!rst_n) begin
+            skid_valid <= 1'b0;
+            skid_buffer <= 10'b0;
+        end else if (tx_fifo_wr_en && real_fifo_full && !skid_valid) begin
+            // Catch the dropped pipeline byte!
+            skid_buffer <= tx_enc_data;
+            skid_valid <= 1'b1;
+        end else if (!real_fifo_full && skid_valid) begin
+            // FIFO has room again, drain the skid buffer
+            skid_valid <= 1'b0;
+        end
+    end
+
+    // Mux the Skid Buffer into the CDC FIFO
+    wire cdc_wr_en     = skid_valid ? 1'b1 : tx_fifo_wr_en;
+    wire [9:0] cdc_din = skid_valid ? skid_buffer : tx_enc_data;
+
     cdc_fifo #(
         .DATA_WIDTH(DATA_WIDTH),
         .ADDR_WIDTH(ADDR_WIDTH)
@@ -97,10 +122,10 @@ module pcs_link_ctrl_top #(
         // Write side
         .clk_wr(clk_sys),
         .rst_n_wr(rst_n && !flush),
-        .wr_en(tx_fifo_wr_en),
-        .data_in(tx_enc_data),
-        .full(tx_fifo_full),
-
+        .wr_en(cdc_wr_en),        // <--- Use MUXed write enable
+        .data_in(cdc_din),        // <--- Use MUXed data
+        .full(real_fifo_full),    // <--- Use internal wire, NOT the top-level port
+        
         // Read side
         .clk_rd(clk_link),
         .rst_n_rd(rst_n && !flush),
@@ -108,6 +133,10 @@ module pcs_link_ctrl_top #(
         .data_out(tx_fifo_data_out),
         .empty(tx_fifo_empty)
     );
+
+    // Tell the top level we are full if the physical FIFO is full OR our skid buffer is holding something
+    // Because we use "assign", the tx_fifo_full output port is automatically driven by this!
+    assign tx_fifo_full = real_fifo_full | skid_valid;
 
     serializer_10b serializer(
         .clk(clk_link),
@@ -131,51 +160,24 @@ module pcs_link_ctrl_top #(
         .link_lock(link_lock_out)
     );
 
-    // **********************
-    // SKID BUFFER
-    // **********************
-    wire real_fifo_full;
-    reg [9:0] skid_buffer;
-    reg skid_valid;
-
-    always @(posedge clk_sys or negedge rst_n) begin
-        if (!rst_n) begin
-            skid_valid <= 1'b0;
-            skid_buffer <= 10'b0;
-        end else if (tx_fifo_wr_en && real_fifo_full && !skid_valid) begin
-            // Catch the dropped pipeline byte!
-            skid_buffer <= tx_enc_data;
-            skid_valid <= 1'b1;
-        end else if (!real_fifo_full && skid_valid) begin
-            // FIFO has room again, drain the skid buffer
-            skid_valid <= 1'b0;
-        end
-    end
-
-    // Mux the Skid Buffer into the CDC FIFO
-    wire cdc_wr_en = skid_valid ? 1'b1 : tx_fifo_wr_en;
-    wire [9:0] cdc_din = skid_valid ? skid_buffer : tx_enc_data;
-
     cdc_fifo #(
         .DATA_WIDTH(DATA_WIDTH),
         .ADDR_WIDTH(ADDR_WIDTH)
-    ) tx_cdc_fifo (
+    ) rx_cdc_fifo (
         // Write side
-        .clk_wr(clk_sys),
+        .clk_wr(clk_link),
         .rst_n_wr(rst_n && !flush),
-        .wr_en(cdc_wr_en),        // <--- Use MUXed write enable
-        .data_in(cdc_din),        // <--- Use MUXed data
-        .full(real_fifo_full),    // <--- Use internal wire, NOT the top-level port
-        
-        // Read side
-        .clk_rd(clk_link),
-        .rst_n_rd(rst_n && !flush),
-        .rd_en(tx_ser_rd_en),
-        .data_out(tx_fifo_data_out),
-        .empty(tx_fifo_empty)
-    );
+        .wr_en(rx_deser_wr_en),
+        .data_in(rx_deser_data_out),
+        .full(rx_fifo_full),
 
-    assign tx_fifo_full = real_fifo_full | skid_valid;
+        // Read side
+        .clk_rd(clk_sys),
+        .rst_n_rd(rst_n && !flush),
+        .rd_en(rx_rd_en),
+        .data_out(rx_fifo_data_out),
+        .empty(rx_fifo_empty)
+    );
 
     decoder_8b10b decoder(
         .clk(clk_sys),
