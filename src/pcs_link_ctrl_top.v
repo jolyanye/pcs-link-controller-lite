@@ -21,7 +21,8 @@ module pcs_link_ctrl_top #(
     output wire rx_valid,
     output wire rx_ack,
     output wire occupied,
-    output wire link_lock_out
+    output wire link_lock_out,
+    output wire tx_fifo_full,
 );
     // **********************
     // Intermediate signals
@@ -33,7 +34,7 @@ module pcs_link_ctrl_top #(
     wire bus_dir; // 1 for RX, 0 for TX
     wire tx_ser_rd_en;
     wire rx_deser_wr_en;
-    wire tx_fifo_empty, tx_fifo_full;
+    wire tx_fifo_empty;
     wire rx_fifo_empty, rx_fifo_full;
 
     // Datapath signals

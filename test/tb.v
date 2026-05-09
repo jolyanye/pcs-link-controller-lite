@@ -26,11 +26,12 @@ module tb ();
   wire [7:0] uio_out;
   wire [7:0] uio_oe;
 
-  wire serial_out    = uo_out;
+  wire serial_out    = uo_out[0];
   wire rx_ack        = uo_out[1];
   wire link_lock_out = uo_out[2];
   wire occupied      = uo_out[3];
   wire rx_valid      = uo_out[4];
+  wire tx_fifo_full  = uo_out[5];
 
   `ifdef GL_TEST
     wire VPWR = 1'b1;

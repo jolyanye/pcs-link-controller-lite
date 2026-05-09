@@ -39,9 +39,7 @@ module tt_um_pcs_link_lite (
     assign uo_out[2] = link_lock_out;
     assign uo_out[3] = occupied;
     assign uo_out[4] = rx_valid;
-    
-    // Tie unused output pins safely to ground
-    assign uo_out[7:5] = 3'b000; 
+    assign uo_out[5] = tx_fifo_full;
 
     // **********************
     // BIDIRECTIONAL BUS MAPPING (uio)
@@ -73,7 +71,8 @@ module tt_um_pcs_link_lite (
         .rx_valid(rx_valid),
         .rx_ack(rx_ack),
         .occupied(occupied),
-        .link_lock_out(link_lock_out)
+        .link_lock_out(link_lock_out),
+        .tx_fifo_full(tx_fifo_full),
     );
 
 endmodule

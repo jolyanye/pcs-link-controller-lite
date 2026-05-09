@@ -4,10 +4,10 @@ from cocotb.triggers import RisingEdge, ClockCycles, with_timeout, SimTimeoutErr
 from cocotb.queue import Queue
 import random
 
-# --- 1. PREDICTOR ---
+# --- PREDICTOR ---
 from encoder import Encoder8b10b
 
-# --- 2. AGENTS ---
+# --- AGENTS ---
 class PcsScoreboard:
     def __init__(self, dut):
         self.dut = dut
@@ -20,7 +20,7 @@ class PcsScoreboard:
 
     def check_result(self, captured_10b):
         if self.expected_queue.empty():
-            return # Ignore idles
+            return
 
         expected_sym, tx_val = self.expected_queue.get_nowait()
         if captured_10b == expected_sym:
@@ -82,7 +82,7 @@ class PcsRxDriver:
                 self.dut.serial_in.value = bit  
                 await RisingEdge(self.dut.clk)
 
-# --- 3. MAIN TESTBENCH ---
+# --- MAIN TESTBENCH ---
 @cocotb.test()
 async def test_pcs_verification_suite(dut):
     dut._log.info("Starting PCS LITE Verification Test (starting with TX mode)...")
@@ -122,17 +122,17 @@ async def test_pcs_verification_suite(dut):
         await ClockCycles(dut.clk_sys, 5)
 
     # =====================================================
-    # PHASE 2: COVERAGE - CDC FIFO BURST STRESS
+    # PHASE 2: CDC FIFO BURST STRESS
     # =====================================================
     dut._log.info("--- Phase 2: TX CDC FIFO Burst Test ---") # drive a burst of data to fill the TX FIFO and ensure proper backpressure handling without deadlocks
     
-    for i in range(20): 
+    for i in range(30): 
         tx_val = random.randint(0, 255)
         expected_10b = predictor.encode(tx_val)
         scoreboard.add_expected(expected_10b, tx_val)
         
         # Check FIFO status before driving new data
-        while int(dut.user_project.pcs_core.tx_cdc_fifo.full.value) == 1:
+        while int(dut.tx_fifo_full.value) == 1:
             dut._log.warning(f"TX FIFO Full! Waiting... (Attempt {i+1})")
             await RisingEdge(dut.clk_sys)
             
@@ -142,7 +142,6 @@ async def test_pcs_verification_suite(dut):
         dut.tx_valid.value = 0
         await ClockCycles(dut.clk_sys, 2) 
     
-    # Wait for the SerDes to completely drain the FIFO
     await ClockCycles(dut.clk_sys, 100)
 
     # =====================================================
