@@ -84,7 +84,7 @@ class PcsRxDriver:
 
 # --- MAIN TESTBENCH ---
 @cocotb.test()
-async def test_pcs_verification_suite(dut):
+async def pcs_verification(dut):
     dut._log.info("Starting PCS LITE Verification Test (starting with TX mode)...")
 
     cocotb.start_soon(Clock(dut.clk, 15.15, unit="ns").start())     
@@ -188,7 +188,7 @@ async def test_pcs_verification_suite(dut):
     # =====================================================
     dut._log.info("--- Phase 5: Deserializer Hunt-Mode Thrashing ---")
     
-    # 1. Force loss of lock by sending noise (simulating unplugged cable)
+    # Force loss of lock by sending noise (simulating unplugged cable)
     dut._log.info("Sending noise to force loss of lock...")
     for _ in range(50):
         driver.queue_symbol([random.choice([0, 1]) for _ in range(10)])
@@ -196,7 +196,7 @@ async def test_pcs_verification_suite(dut):
     await ClockCycles(dut.clk, 500) # Wait for noise to process
     assert int(dut.link_lock_out.value) == 0, "FAIL: Deserializer did not drop lock on noise!"
 
-    # 2. Glitchy connection: 2 commas then noise (should NOT lock)
+    # Glitchy connection: 2 commas then noise (should NOT lock)
     dut._log.info("Sending glitchy connection (2 commas + noise)...")
     driver.queue_symbol(driver.idle_comma)
     driver.queue_symbol(driver.idle_comma)
@@ -206,7 +206,7 @@ async def test_pcs_verification_suite(dut):
     await ClockCycles(dut.clk, 320) 
     assert int(dut.link_lock_out.value) == 0, "FAIL: Deserializer falsely locked on glitch!"
 
-    # 3. Stable connection: 4 commas to restore lock
+    # Stable connection: 4 commas to restore lock
     dut._log.info("Sending stable commas to restore lock...")
     for _ in range(5):
         driver.queue_symbol(driver.idle_comma)
@@ -221,20 +221,29 @@ async def test_pcs_verification_suite(dut):
     
     # Send a good byte, a bad byte, and a good byte
     tx_val_good_1 = 0xAA
-    tx_val_bad    = 0x00 # 0x00 is a great target. Its RD- 6b code is 100111 (exactly 4 ones)
+    tx_val_bad    = 0x00
     tx_val_good_2 = 0x33
     
     sym_good_1 = predictor.encode(tx_val_good_1)
     sym_bad = predictor.encode(tx_val_bad)
     
-    # FIX: Intelligent Single-Bit Flip
-    # Find the first '0' in the 6-bit block and flip it to '1'.
-    # If the block had 4 ones, it now has 5 ones. The LUT is guaranteed to reject it.
-    for i in range(6):
-        if sym_bad[i] == 0:
-            sym_bad[i] = 1
-            dut._log.info(f"Flipped bit at index {i} to create invalid weight symbol.")
-            break
+    # Intelligent Single-Bit Flip (Disparity-Aware)
+    ones_count = sum(sym_bad[:6])
+    
+    if ones_count == 2:
+        # RD+ State: Flip a '1' to 'zero' to create a block with only 1 one (Universally Invalid)
+        for i in range(6):
+            if sym_bad[i] == 1:
+                sym_bad[i] = 0
+                dut._log.info(f"Flipped bit at index {i} (1->zero) to create invalid weight symbol (1 one).")
+                break
+    else:
+        # RD- State: Flip a 'zero' to '1' to create a block with 5 ones (Universally Invalid)
+        for i in range(6):
+            if sym_bad[i] == 0:
+                sym_bad[i] = 1
+                dut._log.info(f"Flipped bit at index {i} (zero->1) to create invalid weight symbol (5 ones).")
+                break
             
     sym_good_2 = predictor.encode(tx_val_good_2)
     
@@ -242,12 +251,9 @@ async def test_pcs_verification_suite(dut):
     driver.queue_symbol(sym_bad)
     driver.queue_symbol(sym_good_2)
     
-    # Expect good 1
     await with_timeout(RisingEdge(dut.rx_valid), 3000, "ns")
     assert dut.uio_out.value.to_unsigned() == tx_val_good_1, "FAIL: Good byte 1 corrupted."
     
-    # Wait for the next valid signal. If the hardware erroneously passes the bad byte, 
-    # it will fail this assertion because it's checking against good 2!
     await ClockCycles(dut.clk_sys, 1) # Step past the current valid edge
     await with_timeout(RisingEdge(dut.rx_valid), 3000, "ns")
     assert dut.uio_out.value.to_unsigned() == tx_val_good_2, "FAIL: Decoder failed to drop invalid byte!"
@@ -262,16 +268,12 @@ async def test_pcs_verification_suite(dut):
     for _ in range(10):
         dut.rx_req.value = 0 # Request TX
         await ClockCycles(dut.clk_sys, random.randint(1, 3))
-        dut.rx_req.value = 1 # Rapidly switch to RX
+        dut.rx_req.value = 1 # Switch to RX
         await ClockCycles(dut.clk_sys, random.randint(1, 3))
         
-    # Settle back into RX mode
     dut.rx_req.value = 1
-    
-    # FIX: Wait half a cycle to let everything settle from the loop
     await FallingEdge(dut.clk_sys)
     
-    # Only wait for the RisingEdge if the hardware hasn't already reached RX mode!
     if int(dut.rx_ack.value) == 0:
         await with_timeout(RisingEdge(dut.rx_ack), 3000, "ns")
         
@@ -283,11 +285,10 @@ async def test_pcs_verification_suite(dut):
     dut._log.info("--- Phase 8: RX CDC FIFO Backpressure Overflow ---")
     
     # Switch back to TX mode. 
-    # In TX mode, rx_rd_en is forced to 0 by the LTSSM, so the RX FIFO cannot drain.
     dut.rx_req.value = 0
     await ClockCycles(dut.clk_sys, 10)
     
-    # Stream 10 bytes into the deserializer. 
+    # Stream 10 bytes into the deserializer 
     overflow_vals = [0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xAA]
     for val in overflow_vals:
         driver.queue_symbol(predictor.encode(val))
